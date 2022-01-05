@@ -3,7 +3,7 @@ import { DeployFunction } from "hardhat-deploy/types";
 import { BigNumber } from "@ethersproject/bignumber";
 
 const func: DeployFunction = async function (hre: HardhatRuntimeEnvironment) {
-  const { deploy, read } = hre.deployments;
+  const { deploy } = hre.deployments;
   const { deployer } = await hre.getNamedAccounts();
   const kingsleyNFT = await deploy("KingsleyFundingNFT", {
     from: deployer,
