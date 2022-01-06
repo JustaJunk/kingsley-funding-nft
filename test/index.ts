@@ -45,9 +45,9 @@ describe("KingsleyFundingNFT", function () {
       contractBalance.eq(tokenPrice.mul(3)),
       "contract balance error"
     );
+    await (await contract.connect(client2).transferFrom(client2.address, client3.address, 2)).wait();
     await network.provider.send("evm_setNextBlockTimestamp", [(new Date()).getTime()/1000 + 10]);
     await network.provider.send("evm_mine");
-    await (await contract.connect(client2).transferFrom(client2.address, client3.address, 2)).wait();
     assert(
       (await contract.tokenOfOwnerByIndex(client3.address, 0)).eq(2),
       "tokenOfOwnerByIndex() error"
@@ -55,17 +55,16 @@ describe("KingsleyFundingNFT", function () {
 
     // Owner claim
     console.log("Owner claim");
-    const ownerBalanceBefore = await owner.getBalance();
-    const receipt = await (await contract.ownerClaim()).wait();
+    const ownerBalance0 = await owner.getBalance();
+    const receipt0 = await (await contract.ownerClaim()).wait();
     assert(
-      (await owner.provider.getBalance(contractAddr))?.eq(0),
+      (await owner.provider.getBalance(contractAddr)).eq(0),
       "contract balance should be empty after owner claim"
     );
-    const ownerBalanceAfter = await owner.getBalance();
     assert(
-      ownerBalanceAfter.eq(
-        ownerBalanceBefore
-        .sub(receipt.gasUsed.mul(receipt.effectiveGasPrice))
+      (await owner.getBalance()).eq(
+        ownerBalance0
+        .sub(receipt0.gasUsed.mul(receipt0.effectiveGasPrice))
         .add(contractBalance)),
       "owner balance error"
     );
@@ -79,7 +78,7 @@ describe("KingsleyFundingNFT", function () {
     .to.be.revertedWith("Ownable: caller is not the owner");
     await (await contract.startClaim({value: rewards})).wait();
     assert(
-      (await owner.provider.getBalance(contractAddr))?.eq(rewards),
+      (await owner.provider.getBalance(contractAddr)).eq(rewards),
       "contract rewards error"
     );
     
@@ -92,13 +91,40 @@ describe("KingsleyFundingNFT", function () {
     const b1 = await owner.provider.getBalance(contractAddr);
     await (await contract.connect(client3).claim()).wait();
     const b2 = await owner.provider.getBalance(contractAddr);
+    await (await contract.connect(client2).claim()).wait(); 
+    const b3 = await owner.provider.getBalance(contractAddr);
     const client0Receive = b0.sub(b1);
     const client3Receive = b1.sub(b2);
-    console.log(ethers.utils.formatEther(client0Receive));
-    console.log(ethers.utils.formatEther(client3Receive));
+    const client2Receive = b2.sub(b3);
+    console.log("client0:", ethers.utils.formatEther(client0Receive));
+    console.log("client3:", ethers.utils.formatEther(client3Receive));
     assert(
       client0Receive.gt(client3Receive),
-      "client rewards error"
+      "client with longer holding time should get more rewards"
+    );
+    assert(
+      client2Receive.eq(0),
+      "client without holding should have no reward"
+    );
+
+    // Owner end claim
+    console.log("End claim");
+    expect(contract.connect(client1).endClaim())
+    .to.be.revertedWith("Ownable: caller is not the owner");
+    const ownerBalance1 = await owner.getBalance();
+    const receipt1 = await (await contract.endClaim()).wait();
+    expect(contract.connect(client1).claim())
+    .to.be.revertedWith("Pausable: not paused");
+    assert(
+      (await owner.provider.getBalance(contractAddr)).eq(0),
+      "should not left any fund in contract when end claim"
+    );
+    assert(
+      (await owner.getBalance()).eq(
+        ownerBalance1
+        .sub(receipt1.gasUsed.mul(receipt1.effectiveGasPrice))
+        .add(rewards.sub(client0Receive).sub(client3Receive))),
+      "owner balance error"
     );
   });
 });
